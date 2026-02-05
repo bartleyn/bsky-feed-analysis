@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bsky-feed-analysis"
+version = "0.1.0"
+description = "Bluesky feed toxicity analyzer"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "atproto>=0.0.50",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+bsky-feed-analysis = "bsky_feed_analysis.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
