@@ -64,21 +64,25 @@ class FeedAnalyzer:
 
         toxic_posts = []
         total_score = 0.0
+        total_sentiment = 0.0
         toxic_count = 0
 
         for post, result in zip(posts, results):
             total_score += result.score
+            total_sentiment += result.sentiment_score
             if result.label == 1:
                 toxic_count += 1
                 toxic_posts.append(PostWithToxicity(post=post, toxicity=result))
 
         avg_score = total_score / len(results) if results else 0.0
+        avg_sentiment = total_sentiment / len(results) if results else 0.0
 
         return FeedAnalysisResult(
             feed=feed,
             posts_analyzed=len(posts),
             toxic_count=toxic_count,
             avg_toxicity_score=avg_score,
+            avg_sentiment_score=avg_sentiment,
             toxic_posts=toxic_posts,
         )
 

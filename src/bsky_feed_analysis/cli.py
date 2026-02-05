@@ -39,15 +39,15 @@ def format_analysis_table(results: list) -> str:
 
     lines = []
     lines.append(
-        f"{'Feed':<30} {'Posts':<8} {'Toxic':<8} {'Rate':<8} {'Avg Score':<10}"
+        f"{'Feed':<30} {'Posts':<8} {'Toxic':<8} {'Rate':<8} {'Avg Score':<10} {'Sentiment':<10}"
     )
-    lines.append("-" * 70)
+    lines.append("-" * 80)
 
     for r in results:
         name = r.feed.name[:28] + ".." if len(r.feed.name) > 30 else r.feed.name
         lines.append(
             f"{name:<30} {r.posts_analyzed:<8} {r.toxic_count:<8} "
-            f"{r.toxicity_rate:>6.1f}% {r.avg_toxicity_score:>9.3f}"
+            f"{r.toxicity_rate:>6.1f}% {r.avg_toxicity_score:>9.3f} {r.avg_sentiment_score:>9.3f}"
         )
 
     return "\n".join(lines)
@@ -69,12 +69,14 @@ def serialize_results(results: list) -> list:
             "toxic_count": r.toxic_count,
             "toxicity_rate": r.toxicity_rate,
             "avg_toxicity_score": r.avg_toxicity_score,
+            "avg_sentiment_score": r.avg_sentiment_score,
             "toxic_posts": [
                 {
                     "uri": p.post.uri,
                     "text": p.post.text,
                     "author_handle": p.post.author_handle,
                     "toxicity_score": p.toxicity.score,
+                    "sentiment_score": p.toxicity.sentiment_score,
                 }
                 for p in r.toxic_posts
             ],

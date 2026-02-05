@@ -33,6 +33,7 @@ class ToxicityResult:
 
     score: float
     label: int
+    sentiment_score: float = 0.0
 
 
 @dataclass
@@ -51,6 +52,7 @@ class FeedAnalysisResult:
     posts_analyzed: int
     toxic_count: int
     avg_toxicity_score: float
+    avg_sentiment_score: float = 0.0
     toxic_posts: list[PostWithToxicity] = field(default_factory=list)
 
     @property

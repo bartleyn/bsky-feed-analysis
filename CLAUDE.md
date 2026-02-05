@@ -26,6 +26,8 @@ streamlit run src/bsky_feed_analysis/dashboard.py
 
 ## Environment Variables
 
+- `BSKY_USERNAME` - Bluesky handle (e.g. `you.bsky.social`) for authenticated access
+- `BSKY_APP_PASSWORD` - Bluesky app password (generate at Settings > App Passwords)
 - `TOXICITY_API_URL` - URL of toxicity scoring API (default: `http://localhost:8000`)
 
 ## Architecture

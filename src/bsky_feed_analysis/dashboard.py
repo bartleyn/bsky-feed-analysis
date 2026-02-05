@@ -154,10 +154,16 @@ with tab_analyze:
             total_toxic = sum(r.toxic_count for r in results)
             avg_rate = (total_toxic / total_posts * 100) if total_posts > 0 else 0
 
-            col1, col2, col3 = st.columns(3)
+            avg_sentiment = (
+                sum(r.avg_sentiment_score * r.posts_analyzed for r in results) / total_posts
+                if total_posts > 0 else 0
+            )
+
+            col1, col2, col3, col4 = st.columns(4)
             col1.metric("Feeds Analyzed", len(results))
             col2.metric("Total Posts", total_posts)
             col3.metric("Overall Toxicity Rate", f"{avg_rate:.1f}%")
+            col4.metric("Avg Sentiment", f"{avg_sentiment:+.3f}")
 
             st.divider()
 
@@ -165,8 +171,11 @@ with tab_analyze:
             chart_data = {
                 "Feed": [r.feed.name[:20] for r in results],
                 "Toxicity Rate (%)": [r.toxicity_rate for r in results],
+                "Avg Sentiment": [r.avg_sentiment_score for r in results],
             }
             st.bar_chart(chart_data, x="Feed", y="Toxicity Rate (%)")
+
+            st.bar_chart(chart_data, x="Feed", y="Avg Sentiment")
 
             st.divider()
 
@@ -179,13 +188,16 @@ with tab_analyze:
                     f"({result.toxic_count}/{result.posts_analyzed} posts)"
                 ):
                     st.caption(f"Average toxicity score: {result.avg_toxicity_score:.3f}")
+                    st.caption(f"Average sentiment: {result.avg_sentiment_score:+.3f}")
                     st.caption(f"Creator: {result.feed.creator_handle}")
 
                     if result.toxic_posts:
                         st.markdown("**Toxic posts:**")
                         for i, tp in enumerate(result.toxic_posts[:10]):
                             st.markdown(
-                                f"**@{tp.post.author_handle}** (score: {tp.toxicity.score:.2f})"
+                                f"**@{tp.post.author_handle}** "
+                                f"(toxicity: {tp.toxicity.score:.2f}, "
+                                f"sentiment: {tp.toxicity.sentiment_score:+.2f})"
                             )
                             st.text(tp.post.text[:500])
                             if i < len(result.toxic_posts) - 1 and i < 9:
