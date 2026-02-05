@@ -41,6 +41,8 @@ class BlueskyClient:
                 "environment variables, or pass them directly."
             )
 
+        # The public API endpoint doesn't support auth; switch to bsky.social
+        self.client = Client(base_url="https://bsky.social")
         self.client.login(username, app_password)
         self.logged_in = True
 
