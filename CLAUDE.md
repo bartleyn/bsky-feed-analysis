@@ -19,6 +19,9 @@ python -m bsky_feed_analysis analyze --num-feeds 3 --max-posts 50
 # Run CLI via entry point (after pip install)
 bsky-feed-analysis list-feeds
 bsky-feed-analysis analyze --json
+
+# Run Streamlit dashboard
+streamlit run src/bsky_feed_analysis/dashboard.py
 ```
 
 ## Environment Variables
@@ -36,7 +39,8 @@ src/bsky_feed_analysis/
 ├── models.py            # Data classes (Feed, Post, ToxicityResult, etc.)
 ├── bluesky_client.py    # Bluesky API wrapper using atproto SDK
 ├── toxicity_client.py   # HTTP client for toxicity scoring API
-└── analyzer.py          # Orchestration layer combining clients
+├── analyzer.py          # Orchestration layer combining clients
+└── dashboard.py         # Streamlit web dashboard
 ```
 
 ### Key Components
@@ -45,8 +49,10 @@ src/bsky_feed_analysis/
 - **ToxicityClient**: Calls `/score` endpoint with batch of texts, returns scores and labels
 - **FeedAnalyzer**: Orchestrates feed discovery and toxicity analysis, computes aggregate metrics
 - **CLI**: Two commands - `list-feeds` for discovery, `analyze` for toxicity analysis
+- **Dashboard**: Streamlit web UI with feed browser and analysis visualization
 
 ### Dependencies
 
 - `atproto>=0.0.50` - Bluesky AT Protocol SDK
 - `httpx>=0.25.0` - HTTP client for toxicity API
+- `streamlit>=1.30.0` - Web dashboard framework
