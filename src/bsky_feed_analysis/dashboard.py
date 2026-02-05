@@ -34,26 +34,33 @@ def check_toxicity_api():
 # Sidebar for configuration
 with st.sidebar:
     st.header("Bluesky Login")
-    bsky_user = st.text_input(
-        "Username / handle",
-        value=BSKY_USERNAME,
-        placeholder="you.bsky.social",
-    )
-    bsky_pass = st.text_input(
-        "App password",
-        value=BSKY_APP_PASSWORD,
-        type="password",
-        placeholder="xxxx-xxxx-xxxx-xxxx",
-    )
-
-    if bsky_user and bsky_pass:
-        try:
-            analyzer = get_analyzer(username=bsky_user, app_password=bsky_pass)
-            st.success(f"Logged in as {bsky_user}")
-        except Exception as e:
-            st.error(f"Login failed: {e}")
+    if st.session_state.get("bsky_logged_in"):
+        st.success(f"Logged in as {st.session_state['bsky_user']}")
+        bsky_user = st.session_state["bsky_user"]
+        bsky_pass = st.session_state["bsky_pass"]
     else:
-        st.info("Log in for full feed access (some feeds require auth)")
+        bsky_user = st.text_input(
+            "Username / handle",
+            value=BSKY_USERNAME,
+            placeholder="you.bsky.social",
+        )
+        bsky_pass = st.text_input(
+            "App password",
+            value=BSKY_APP_PASSWORD,
+            type="password",
+            placeholder="xxxx-xxxx-xxxx-xxxx",
+        )
+        if bsky_user and bsky_pass:
+            try:
+                get_analyzer(username=bsky_user, app_password=bsky_pass)
+                st.session_state["bsky_logged_in"] = True
+                st.session_state["bsky_user"] = bsky_user
+                st.session_state["bsky_pass"] = bsky_pass
+                st.rerun()
+            except Exception as e:
+                st.error(f"Login failed: {e}")
+        else:
+            st.info("Log in for full feed access (some feeds require auth)")
 
     st.divider()
     st.header("Configuration")
