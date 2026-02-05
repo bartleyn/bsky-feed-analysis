@@ -2,9 +2,9 @@
 
 import streamlit as st
 
-from .analyzer import FeedAnalyzer
-from .toxicity_client import ToxicityClient
-from .config import TOXICITY_API_URL
+from bsky_feed_analysis.analyzer import FeedAnalyzer
+from bsky_feed_analysis.toxicity_client import ToxicityClient
+from bsky_feed_analysis.config import TOXICITY_API_URL, BSKY_USERNAME, BSKY_APP_PASSWORD
 
 
 st.set_page_config(
@@ -17,9 +17,12 @@ st.title("Bluesky Feed Toxicity Analyzer")
 
 
 @st.cache_resource
-def get_analyzer():
-    """Get or create the analyzer instance."""
-    return FeedAnalyzer()
+def get_analyzer(username: str = "", app_password: str = ""):
+    """Get or create the analyzer instance, optionally authenticated."""
+    analyzer = FeedAnalyzer()
+    if username and app_password:
+        analyzer.login(username=username, app_password=app_password)
+    return analyzer
 
 
 def check_toxicity_api():
@@ -30,6 +33,29 @@ def check_toxicity_api():
 
 # Sidebar for configuration
 with st.sidebar:
+    st.header("Bluesky Login")
+    bsky_user = st.text_input(
+        "Username / handle",
+        value=BSKY_USERNAME,
+        placeholder="you.bsky.social",
+    )
+    bsky_pass = st.text_input(
+        "App password",
+        value=BSKY_APP_PASSWORD,
+        type="password",
+        placeholder="xxxx-xxxx-xxxx-xxxx",
+    )
+
+    if bsky_user and bsky_pass:
+        try:
+            analyzer = get_analyzer(username=bsky_user, app_password=bsky_pass)
+            st.success(f"Logged in as {bsky_user}")
+        except Exception as e:
+            st.error(f"Login failed: {e}")
+    else:
+        st.info("Log in for full feed access (some feeds require auth)")
+
+    st.divider()
     st.header("Configuration")
     st.text(f"Toxicity API: {TOXICITY_API_URL}")
 
@@ -53,7 +79,7 @@ with tab_discover:
     if st.button("Load Feeds", key="load_feeds"):
         with st.spinner("Fetching feeds from Bluesky..."):
             try:
-                analyzer = get_analyzer()
+                analyzer = get_analyzer(username=bsky_user, app_password=bsky_pass)
                 feeds = analyzer.list_feeds(limit=20)
                 st.session_state.feeds = feeds
             except Exception as e:
@@ -100,7 +126,7 @@ with tab_analyze:
         if st.button("Run Analysis", type="primary"):
             with st.spinner("Analyzing feeds..."):
                 try:
-                    analyzer = get_analyzer()
+                    analyzer = get_analyzer(username=bsky_user, app_password=bsky_pass)
 
                     if specific_uri:
                         results = analyzer.analyze_feeds(

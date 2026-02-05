@@ -6,7 +6,7 @@ from datetime import datetime
 
 from atproto import Client
 
-from .config import BLUESKY_PUBLIC_API
+from .config import BLUESKY_PUBLIC_API, BSKY_USERNAME, BSKY_APP_PASSWORD
 from .models import Feed, Post
 
 
@@ -15,6 +15,34 @@ class BlueskyClient:
 
     def __init__(self, base_url: str = BLUESKY_PUBLIC_API):
         self.client = Client(base_url=base_url)
+        self.logged_in = False
+
+    def login(
+        self,
+        username: str | None = None,
+        app_password: str | None = None,
+    ) -> None:
+        """Log in to Bluesky for authenticated access.
+
+        Args:
+            username: Bluesky handle or DID. Falls back to BSKY_USERNAME env var.
+            app_password: App password. Falls back to BSKY_APP_PASSWORD env var.
+
+        Raises:
+            ValueError: If credentials are missing.
+            atproto.exceptions.UnauthorizedError: If login fails.
+        """
+        username = username or BSKY_USERNAME
+        app_password = app_password or BSKY_APP_PASSWORD
+
+        if not username or not app_password:
+            raise ValueError(
+                "Bluesky credentials required. Set BSKY_USERNAME and BSKY_APP_PASSWORD "
+                "environment variables, or pass them directly."
+            )
+
+        self.client.login(username, app_password)
+        self.logged_in = True
 
     def get_suggested_feeds(self, limit: int = 20) -> list[Feed]:
         """Get suggested/popular feeds.

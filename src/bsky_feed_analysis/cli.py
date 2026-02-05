@@ -83,9 +83,17 @@ def serialize_results(results: list) -> list:
     return output
 
 
+def _make_analyzer(args: argparse.Namespace) -> FeedAnalyzer:
+    """Create an analyzer, optionally logging in."""
+    analyzer = FeedAnalyzer()
+    if getattr(args, "login", False):
+        analyzer.login()
+    return analyzer
+
+
 def cmd_list_feeds(args: argparse.Namespace) -> int:
     """Handle list-feeds command."""
-    analyzer = FeedAnalyzer()
+    analyzer = _make_analyzer(args)
 
     try:
         feeds = analyzer.list_feeds(limit=args.limit)
@@ -104,7 +112,7 @@ def cmd_list_feeds(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     """Handle analyze command."""
-    analyzer = FeedAnalyzer()
+    analyzer = _make_analyzer(args)
 
     try:
         results = analyzer.analyze_feeds(
@@ -129,6 +137,11 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bsky-feed-analysis",
         description="Analyze Bluesky feeds for toxicity",
+    )
+    parser.add_argument(
+        "--login",
+        action="store_true",
+        help="Log in to Bluesky (requires BSKY_USERNAME and BSKY_APP_PASSWORD env vars)",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)

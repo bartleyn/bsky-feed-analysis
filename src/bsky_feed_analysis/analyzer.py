@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from .bluesky_client import BlueskyClient
 from .toxicity_client import ToxicityClient
 from .models import Feed, FeedAnalysisResult, PostWithToxicity
@@ -18,6 +20,10 @@ class FeedAnalyzer:
     ):
         self.bluesky = bluesky_client or BlueskyClient()
         self.toxicity = toxicity_client or ToxicityClient()
+
+    def login(self, username: str | None = None, app_password: str | None = None) -> None:
+        """Log in to Bluesky for authenticated feed access."""
+        self.bluesky.login(username=username, app_password=app_password)
 
     def list_feeds(self, limit: int = DEFAULT_NUM_FEEDS) -> list[Feed]:
         """Get suggested feeds.
@@ -100,7 +106,10 @@ class FeedAnalyzer:
         results = []
 
         for feed in feeds:
-            result = self.analyze_feed(feed, max_posts=max_posts)
-            results.append(result)
+            try:
+                result = self.analyze_feed(feed, max_posts=max_posts)
+                results.append(result)
+            except Exception as e:
+                print(f"Skipping feed '{feed.name}': {e}", file=sys.stderr)
 
         return results
