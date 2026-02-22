@@ -46,9 +46,10 @@ class ToxicityClient:
 
         return [
             ToxicityResult(
-                score=item["toxicity_score"],
+                score=item["scores"]["toxicity"],
                 label=item["label"],
-                sentiment_score=item.get("sentiment_score", 0.0),
+                sentiment_score=item["scores"].get("sentiment", 0.0),
+                hatespeech_score=item["scores"].get("hatespeech", 0.0)
             )
             for item in data["results"]
         ]

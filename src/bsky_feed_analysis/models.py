@@ -34,6 +34,7 @@ class ToxicityResult:
     score: float
     label: int
     sentiment_score: float = 0.0
+    hatespeech_score: float = 0.0
 
 
 @dataclass
@@ -53,7 +54,9 @@ class FeedAnalysisResult:
     toxic_count: int
     avg_toxicity_score: float
     avg_sentiment_score: float = 0.0
+    avg_hatespeech_score: float = 0.0
     toxic_posts: list[PostWithToxicity] = field(default_factory=list)
+    high_hate_posts: list[PostWithToxicity] = field(default_factory=list)
 
     @property
     def toxicity_rate(self) -> float:
@@ -61,3 +64,15 @@ class FeedAnalysisResult:
         if self.posts_analyzed == 0:
             return 0.0
         return (self.toxic_count / self.posts_analyzed) * 100
+
+    @property
+    def high_hate_count(self) -> int:
+        """Number of posts with high hate speech scores."""
+        return len(self.high_hate_posts)
+
+    @property
+    def high_hate_rate(self) -> float:
+        """Percentage of posts with high hate speech scores."""
+        if self.posts_analyzed == 0:
+            return 0.0
+        return (self.high_hate_count / self.posts_analyzed) * 100

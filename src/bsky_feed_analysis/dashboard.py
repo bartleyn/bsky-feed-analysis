@@ -159,18 +159,27 @@ with tab_analyze:
             # Summary metrics
             total_posts = sum(r.posts_analyzed for r in results)
             total_toxic = sum(r.toxic_count for r in results)
+            total_high_hate = sum(r.high_hate_count for r in results)
             avg_rate = (total_toxic / total_posts * 100) if total_posts > 0 else 0
+            high_hate_rate = (total_high_hate / total_posts * 100) if total_posts > 0 else 0
 
             avg_sentiment = (
                 sum(r.avg_sentiment_score * r.posts_analyzed for r in results) / total_posts
                 if total_posts > 0 else 0
             )
 
-            col1, col2, col3, col4 = st.columns(4)
+            avg_hate = (
+                sum(r.avg_hatespeech_score * r.posts_analyzed for r in results) / total_posts
+                if total_posts > 0 else 0
+            )
+
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
             col1.metric("Feeds Analyzed", len(results))
             col2.metric("Total Posts", total_posts)
-            col3.metric("Overall Toxicity Rate", f"{avg_rate:.1f}%")
-            col4.metric("Avg Sentiment", f"{avg_sentiment:+.3f}")
+            col3.metric("Toxicity Rate", f"{avg_rate:.1f}%")
+            col4.metric("High Hate Rate", f"{high_hate_rate:.1f}%")
+            col5.metric("Avg Sentiment", f"{avg_sentiment:+.3f}")
+            col6.metric("Avg Hate Score", f"{avg_hate:.3f}")
 
             st.divider()
 
@@ -178,11 +187,15 @@ with tab_analyze:
             chart_data = {
                 "Feed": [r.feed.name[:20] for r in results],
                 "Toxicity Rate (%)": [r.toxicity_rate for r in results],
+                "High Hate Rate (%)": [r.high_hate_rate for r in results],
                 "Avg Sentiment": [r.avg_sentiment_score for r in results],
+                "Avg Hate Speech": [r.avg_hatespeech_score for r in results],
             }
-            st.bar_chart(chart_data, x="Feed", y="Toxicity Rate (%)")
+            st.bar_chart(chart_data, x="Feed", y=["Toxicity Rate (%)", "High Hate Rate (%)"])
 
             st.bar_chart(chart_data, x="Feed", y="Avg Sentiment")
+
+            st.bar_chart(chart_data, x="Feed", y="Avg Hate Speech")
 
             st.divider()
 
@@ -191,26 +204,53 @@ with tab_analyze:
 
             for result in sorted(results, key=lambda r: r.toxicity_rate, reverse=True):
                 with st.expander(
-                    f"{result.feed.name} - {result.toxicity_rate:.1f}% toxic "
-                    f"({result.toxic_count}/{result.posts_analyzed} posts)"
+                    f"{result.feed.name} - {result.toxicity_rate:.1f}% toxic, "
+                    f"{result.high_hate_rate:.1f}% high hate "
+                    f"({result.posts_analyzed} posts)"
                 ):
                     st.caption(f"Average toxicity score: {result.avg_toxicity_score:.3f}")
                     st.caption(f"Average sentiment: {result.avg_sentiment_score:+.3f}")
+                    st.caption(f"Average hate speech score: {result.avg_hatespeech_score:.3f}")
                     st.caption(f"Creator: {result.feed.creator_handle}")
 
-                    if result.toxic_posts:
-                        st.markdown("**Toxic posts:**")
-                        for i, tp in enumerate(result.toxic_posts[:10]):
-                            st.markdown(
-                                f"**@{tp.post.author_handle}** "
-                                f"(toxicity: {tp.toxicity.score:.2f}, "
-                                f"sentiment: {tp.toxicity.sentiment_score:+.2f})"
-                            )
-                            st.text(tp.post.text[:500])
-                            if i < len(result.toxic_posts) - 1 and i < 9:
-                                st.divider()
+                    post_tab_toxic, post_tab_hate = st.tabs(
+                        [f"Toxic Posts ({result.toxic_count})", f"High Hate Posts ({result.high_hate_count})"]
+                    )
 
-                        if len(result.toxic_posts) > 10:
-                            st.caption(f"... and {len(result.toxic_posts) - 10} more")
-                    else:
-                        st.success("No toxic posts detected!")
+                    with post_tab_toxic:
+                        if result.toxic_posts:
+                            for i, tp in enumerate(result.toxic_posts[:10]):
+                                st.markdown(
+                                    f"**@{tp.post.author_handle}** "
+                                    f"(toxicity: {tp.toxicity.score:.2f}, "
+                                    f"sentiment: {tp.toxicity.sentiment_score:+.2f}, "
+                                    f"hate: {tp.toxicity.hatespeech_score:.2f})"
+                                )
+                                st.text(tp.post.text[:500])
+                                if i < len(result.toxic_posts) - 1 and i < 9:
+                                    st.divider()
+
+                            if len(result.toxic_posts) > 10:
+                                st.caption(f"... and {len(result.toxic_posts) - 10} more")
+                        else:
+                            st.success("No toxic posts detected!")
+
+                    with post_tab_hate:
+                        if result.high_hate_posts:
+                            for i, hp in enumerate(
+                                sorted(result.high_hate_posts, key=lambda x: x.toxicity.hatespeech_score, reverse=True)[:10]
+                            ):
+                                st.markdown(
+                                    f"**@{hp.post.author_handle}** "
+                                    f"(hate: {hp.toxicity.hatespeech_score:.2f}, "
+                                    f"toxicity: {hp.toxicity.score:.2f}, "
+                                    f"sentiment: {hp.toxicity.sentiment_score:+.2f})"
+                                )
+                                st.text(hp.post.text[:500])
+                                if i < len(result.high_hate_posts) - 1 and i < 9:
+                                    st.divider()
+
+                            if len(result.high_hate_posts) > 10:
+                                st.caption(f"... and {len(result.high_hate_posts) - 10} more")
+                        else:
+                            st.success("No high hate speech posts detected!")
