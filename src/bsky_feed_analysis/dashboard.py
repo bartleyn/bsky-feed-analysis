@@ -1,19 +1,22 @@
 """Streamlit dashboard for Bluesky feed toxicity analysis."""
 
+from datetime import datetime, timezone
+
 import streamlit as st
 
 from bsky_feed_analysis.analyzer import FeedAnalyzer
 from bsky_feed_analysis.toxicity_client import ToxicityClient
 from bsky_feed_analysis.config import TOXICITY_API_URL, BSKY_USERNAME, BSKY_APP_PASSWORD
+from bsky_feed_analysis.models import LabeledPost, PostWithToxicity
 
 
 st.set_page_config(
-    page_title="Bluesky Feed Toxicity Analyzer",
+    page_title="Bluesky Feed 'Toxicity' Analyzer",
     page_icon="🦋",
     layout="wide",
 )
 
-st.title("Bluesky Feed Toxicity Analyzer")
+st.title("Bluesky Feed 'Toxicity' Analyzer")
 
 
 @st.cache_resource
@@ -29,6 +32,84 @@ def check_toxicity_api():
     """Check if toxicity API is available."""
     client = ToxicityClient()
     return client.health_check()
+
+
+def render_post_with_labeling(
+    pwt: PostWithToxicity,
+    feed_uri: str,
+    feed_name: str,
+    labeled_uris: set[str],
+    key_prefix: str,
+):
+    """Render a single post with its scores and inline labeling controls."""
+    already_labeled = pwt.post.uri in labeled_uris
+
+    label_indicator = " [labeled]" if already_labeled else ""
+    st.markdown(
+        f"**@{pwt.post.author_handle}**{label_indicator} "
+        f"(toxicity: {pwt.toxicity.score:.2f}, "
+        f"sentiment: {pwt.toxicity.sentiment_score:+.2f}, "
+        f"hate: {pwt.toxicity.hatespeech_score:.2f})"
+    )
+    st.text(pwt.post.text[:500])
+
+    with st.popover("Label this post", use_container_width=True):
+        tox_options = ["No correction", "Toxic", "Not toxic"]
+        tox_choice = st.selectbox(
+            "Toxicity correction",
+            tox_options,
+            key=f"{key_prefix}_tox",
+        )
+
+        hate_options = ["No correction", "Hate speech", "Not hate speech"]
+        hate_choice = st.selectbox(
+            "Hate speech correction",
+            hate_options,
+            key=f"{key_prefix}_hate",
+        )
+
+        tags = st.text_input(
+            "Tags (comma-separated)",
+            key=f"{key_prefix}_tags",
+            placeholder="sarcasm, false-positive, political",
+        )
+
+        if st.button("Save Label", key=f"{key_prefix}_save"):
+            corrected_tox = None
+            if tox_choice == "Toxic":
+                corrected_tox = 1
+            elif tox_choice == "Not toxic":
+                corrected_tox = 0
+
+            corrected_hate = None
+            if hate_choice == "Hate speech":
+                corrected_hate = 1
+            elif hate_choice == "Not hate speech":
+                corrected_hate = 0
+
+            labeled = LabeledPost(
+                uri=pwt.post.uri,
+                text=pwt.post.text,
+                author_handle=pwt.post.author_handle,
+                created_at=str(pwt.post.created_at) if pwt.post.created_at else "",
+                feed_uri=feed_uri,
+                feed_name=feed_name,
+                toxicity_score=pwt.toxicity.score,
+                toxicity_label=pwt.toxicity.label,
+                sentiment_score=pwt.toxicity.sentiment_score,
+                hatespeech_score=pwt.toxicity.hatespeech_score,
+                corrected_toxicity_label=corrected_tox,
+                corrected_hatespeech_label=corrected_hate,
+                tags=tags.strip(),
+                labeled_at=datetime.now(timezone.utc).isoformat(),
+            )
+            try:
+                toxicity_client = ToxicityClient()
+                toxicity_client.submit_label(labeled)
+                st.session_state["labeled_uris"].add(pwt.post.uri)
+                st.success("Label sent to API!")
+            except Exception as e:
+                st.error(f"Failed to submit label: {e}")
 
 
 # Sidebar for configuration
@@ -75,6 +156,15 @@ with st.sidebar:
     st.divider()
     max_posts = st.slider("Max posts per feed", 10, 200, 50, step=10)
     num_feeds = st.slider("Number of feeds to analyze", 1, 20, 5)
+
+    # Label management section
+    st.divider()
+    st.header("Labels")
+
+    if "labeled_uris" not in st.session_state:
+        st.session_state["labeled_uris"] = set()
+
+    st.metric("Labeled Posts (this session)", len(st.session_state["labeled_uris"]))
 
 # Tabs for different views
 tab_discover, tab_analyze = st.tabs(["Discover Feeds", "Analyze Toxicity"])
@@ -147,6 +237,7 @@ with tab_analyze:
                         )
 
                     st.session_state.results = results
+                    st.session_state["labeled_uris"] = set()
                 except Exception as e:
                     st.error(f"Error during analysis: {e}")
 
@@ -159,18 +250,27 @@ with tab_analyze:
             # Summary metrics
             total_posts = sum(r.posts_analyzed for r in results)
             total_toxic = sum(r.toxic_count for r in results)
+            total_high_hate = sum(r.high_hate_count for r in results)
             avg_rate = (total_toxic / total_posts * 100) if total_posts > 0 else 0
+            high_hate_rate = (total_high_hate / total_posts * 100) if total_posts > 0 else 0
 
             avg_sentiment = (
                 sum(r.avg_sentiment_score * r.posts_analyzed for r in results) / total_posts
                 if total_posts > 0 else 0
             )
 
-            col1, col2, col3, col4 = st.columns(4)
+            avg_hate = (
+                sum(r.avg_hatespeech_score * r.posts_analyzed for r in results) / total_posts
+                if total_posts > 0 else 0
+            )
+
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
             col1.metric("Feeds Analyzed", len(results))
             col2.metric("Total Posts", total_posts)
-            col3.metric("Overall Toxicity Rate", f"{avg_rate:.1f}%")
-            col4.metric("Avg Sentiment", f"{avg_sentiment:+.3f}")
+            col3.metric("Toxicity Rate", f"{avg_rate:.1f}%")
+            col4.metric("High Hate Rate", f"{high_hate_rate:.1f}%")
+            col5.metric("Avg Sentiment", f"{avg_sentiment:+.3f}")
+            col6.metric("Avg Hate Score", f"{avg_hate:.3f}")
 
             st.divider()
 
@@ -178,39 +278,97 @@ with tab_analyze:
             chart_data = {
                 "Feed": [r.feed.name[:20] for r in results],
                 "Toxicity Rate (%)": [r.toxicity_rate for r in results],
+                "High Hate Rate (%)": [r.high_hate_rate for r in results],
                 "Avg Sentiment": [r.avg_sentiment_score for r in results],
+                "Avg Hate Speech": [r.avg_hatespeech_score for r in results],
             }
-            st.bar_chart(chart_data, x="Feed", y="Toxicity Rate (%)")
+            st.bar_chart(chart_data, x="Feed", y=["Toxicity Rate (%)", "High Hate Rate (%)"])
 
             st.bar_chart(chart_data, x="Feed", y="Avg Sentiment")
+
+            st.bar_chart(chart_data, x="Feed", y="Avg Hate Speech")
 
             st.divider()
 
             # Detailed results per feed
             st.subheader("Feed Details")
 
-            for result in sorted(results, key=lambda r: r.toxicity_rate, reverse=True):
+            labeled_uris = st.session_state.get("labeled_uris", set())
+
+            for ri, result in enumerate(sorted(results, key=lambda r: r.toxicity_rate, reverse=True)):
                 with st.expander(
-                    f"{result.feed.name} - {result.toxicity_rate:.1f}% toxic "
-                    f"({result.toxic_count}/{result.posts_analyzed} posts)"
+                    f"{result.feed.name} - {result.toxicity_rate:.1f}% toxic, "
+                    f"{result.high_hate_rate:.1f}% high hate "
+                    f"({result.posts_analyzed} posts)"
                 ):
                     st.caption(f"Average toxicity score: {result.avg_toxicity_score:.3f}")
                     st.caption(f"Average sentiment: {result.avg_sentiment_score:+.3f}")
+                    st.caption(f"Average hate speech score: {result.avg_hatespeech_score:.3f}")
                     st.caption(f"Creator: {result.feed.creator_handle}")
 
-                    if result.toxic_posts:
-                        st.markdown("**Toxic posts:**")
-                        for i, tp in enumerate(result.toxic_posts[:10]):
-                            st.markdown(
-                                f"**@{tp.post.author_handle}** "
-                                f"(toxicity: {tp.toxicity.score:.2f}, "
-                                f"sentiment: {tp.toxicity.sentiment_score:+.2f})"
-                            )
-                            st.text(tp.post.text[:500])
-                            if i < len(result.toxic_posts) - 1 and i < 9:
-                                st.divider()
+                    post_tab_toxic, post_tab_hate, post_tab_all = st.tabs(
+                        [
+                            f"Toxic Posts ({result.toxic_count})",
+                            f"High Hate Posts ({result.high_hate_count})",
+                            f"All Posts ({result.posts_analyzed})",
+                        ]
+                    )
 
-                        if len(result.toxic_posts) > 10:
-                            st.caption(f"... and {len(result.toxic_posts) - 10} more")
-                    else:
-                        st.success("No toxic posts detected!")
+                    with post_tab_toxic:
+                        if result.toxic_posts:
+                            for i, tp in enumerate(result.toxic_posts[:10]):
+                                render_post_with_labeling(
+                                    tp,
+                                    feed_uri=result.feed.uri,
+                                    feed_name=result.feed.name,
+                                    labeled_uris=labeled_uris,
+
+                                    key_prefix=f"toxic_{ri}_{i}",
+                                )
+                                if i < len(result.toxic_posts) - 1 and i < 9:
+                                    st.divider()
+
+                            if len(result.toxic_posts) > 10:
+                                st.caption(f"... and {len(result.toxic_posts) - 10} more")
+                        else:
+                            st.success("No toxic posts detected!")
+
+                    with post_tab_hate:
+                        if result.high_hate_posts:
+                            sorted_hate = sorted(
+                                result.high_hate_posts,
+                                key=lambda x: x.toxicity.hatespeech_score,
+                                reverse=True,
+                            )
+                            for i, hp in enumerate(sorted_hate[:10]):
+                                render_post_with_labeling(
+                                    hp,
+                                    feed_uri=result.feed.uri,
+                                    feed_name=result.feed.name,
+                                    labeled_uris=labeled_uris,
+
+                                    key_prefix=f"hate_{ri}_{i}",
+                                )
+                                if i < len(result.high_hate_posts) - 1 and i < 9:
+                                    st.divider()
+
+                            if len(result.high_hate_posts) > 10:
+                                st.caption(f"... and {len(result.high_hate_posts) - 10} more")
+                        else:
+                            st.success("No high hate speech posts detected!")
+
+                    with post_tab_all:
+                        if result.all_posts:
+                            for i, ap in enumerate(result.all_posts):
+                                render_post_with_labeling(
+                                    ap,
+                                    feed_uri=result.feed.uri,
+                                    feed_name=result.feed.name,
+                                    labeled_uris=labeled_uris,
+
+                                    key_prefix=f"all_{ri}_{i}",
+                                )
+                                if i < len(result.all_posts) - 1:
+                                    st.divider()
+                        else:
+                            st.info("No posts found in this feed.")

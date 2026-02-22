@@ -7,7 +7,7 @@ import sys
 from .bluesky_client import BlueskyClient
 from .toxicity_client import ToxicityClient
 from .models import Feed, FeedAnalysisResult, PostWithToxicity
-from .config import DEFAULT_NUM_FEEDS, DEFAULT_MAX_POSTS
+from .config import DEFAULT_NUM_FEEDS, DEFAULT_MAX_POSTS, DEFAULT_HATESPEECH_THRESHOLD
 
 
 class FeedAnalyzer:
@@ -17,9 +17,11 @@ class FeedAnalyzer:
         self,
         bluesky_client: BlueskyClient | None = None,
         toxicity_client: ToxicityClient | None = None,
+        hatespeech_threshold: float = DEFAULT_HATESPEECH_THRESHOLD,
     ):
         self.bluesky = bluesky_client or BlueskyClient()
         self.toxicity = toxicity_client or ToxicityClient()
+        self.hatespeech_threshold = hatespeech_threshold
 
     def login(self, username: str | None = None, app_password: str | None = None) -> None:
         """Log in to Bluesky for authenticated feed access."""
@@ -57,25 +59,36 @@ class FeedAnalyzer:
                 toxic_count=0,
                 avg_toxicity_score=0.0,
                 toxic_posts=[],
+                high_hate_posts=[],
             )
 
         texts = [post.text for post in posts]
         results = self.toxicity.score_texts(texts)
 
+        all_posts = []
         toxic_posts = []
+        high_hate_posts = []
         total_score = 0.0
         total_sentiment = 0.0
+        total_hatespeech = 0.0
         toxic_count = 0
 
         for post, result in zip(posts, results):
             total_score += result.score
             total_sentiment += result.sentiment_score
+            total_hatespeech += result.hatespeech_score
+            post_with_toxicity = PostWithToxicity(post=post, toxicity=result)
+            all_posts.append(post_with_toxicity)
             if result.label == 1:
                 toxic_count += 1
-                toxic_posts.append(PostWithToxicity(post=post, toxicity=result))
+                toxic_posts.append(post_with_toxicity)
+            if result.hatespeech_score >= self.hatespeech_threshold:
+                high_hate_posts.append(post_with_toxicity)
 
-        avg_score = total_score / len(results) if results else 0.0
-        avg_sentiment = total_sentiment / len(results) if results else 0.0
+        n = len(results)
+        avg_score = total_score / n if n else 0.0
+        avg_sentiment = total_sentiment / n if n else 0.0
+        avg_hatespeech = total_hatespeech / n if n else 0.0
 
         return FeedAnalysisResult(
             feed=feed,
@@ -83,7 +96,10 @@ class FeedAnalyzer:
             toxic_count=toxic_count,
             avg_toxicity_score=avg_score,
             avg_sentiment_score=avg_sentiment,
+            avg_hatespeech_score=avg_hatespeech,
             toxic_posts=toxic_posts,
+            high_hate_posts=high_hate_posts,
+            all_posts=all_posts,
         )
 
     def analyze_feeds(
