@@ -65,6 +65,7 @@ class FeedAnalyzer:
         texts = [post.text for post in posts]
         results = self.toxicity.score_texts(texts)
 
+        all_posts = []
         toxic_posts = []
         high_hate_posts = []
         total_score = 0.0
@@ -77,6 +78,7 @@ class FeedAnalyzer:
             total_sentiment += result.sentiment_score
             total_hatespeech += result.hatespeech_score
             post_with_toxicity = PostWithToxicity(post=post, toxicity=result)
+            all_posts.append(post_with_toxicity)
             if result.label == 1:
                 toxic_count += 1
                 toxic_posts.append(post_with_toxicity)
@@ -97,6 +99,7 @@ class FeedAnalyzer:
             avg_hatespeech_score=avg_hatespeech,
             toxic_posts=toxic_posts,
             high_hate_posts=high_hate_posts,
+            all_posts=all_posts,
         )
 
     def analyze_feeds(
