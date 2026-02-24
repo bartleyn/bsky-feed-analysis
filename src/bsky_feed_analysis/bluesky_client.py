@@ -129,6 +129,121 @@ class BlueskyClient:
 
         return posts, response.cursor
 
+    def get_post_thread(self, uri: str, depth: int = 6) -> list[Post]:
+        """Get parent posts in a thread for context.
+
+        Walks the parent chain from the given post URI and returns
+        ancestor posts ordered from root to immediate parent.
+
+        Args:
+            uri: AT URI of the post to get thread context for.
+            depth: How many levels of parents to fetch.
+
+        Returns:
+            List of parent Post objects (root first, immediate parent last).
+            Empty list if the post has no parents or on error.
+        """
+        try:
+            response = self.client.app.bsky.feed.get_post_thread(
+                {"uri": uri, "depth": depth}
+            )
+        except Exception:
+            return []
+
+        parents = []
+        node = getattr(response.thread, "parent", None)
+        while node is not None:
+            post_data = getattr(node, "post", None)
+            if post_data is None:
+                break
+
+            text = ""
+            if hasattr(post_data, "record") and post_data.record:
+                text = getattr(post_data.record, "text", "")
+
+            author_handle = ""
+            if hasattr(post_data, "author") and post_data.author:
+                author_handle = getattr(post_data.author, "handle", "")
+
+            created_at = None
+            if hasattr(post_data, "record") and post_data.record:
+                created_str = getattr(post_data.record, "created_at", None)
+                if created_str:
+                    try:
+                        created_at = datetime.fromisoformat(
+                            created_str.replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        pass
+
+            if text:
+                parents.append(
+                    Post(
+                        uri=post_data.uri,
+                        text=text,
+                        author_handle=author_handle,
+                        created_at=created_at,
+                    )
+                )
+
+            node = getattr(node, "parent", None)
+
+        parents.reverse()
+        return parents
+
+    def get_author_feed(self, actor: str, limit: int = 20) -> list[Post]:
+        """Get recent posts from an author's feed.
+
+        Args:
+            actor: Author handle or DID.
+            limit: Maximum posts to return.
+
+        Returns:
+            List of Post objects ordered newest first.
+            Empty list on error.
+        """
+        try:
+            response = self.client.app.bsky.feed.get_author_feed(
+                {"actor": actor, "limit": min(limit, 100)}
+            )
+        except Exception:
+            return []
+
+        posts = []
+        for feed_item in response.feed:
+            post_record = feed_item.post
+
+            text = ""
+            if hasattr(post_record, "record") and post_record.record:
+                text = getattr(post_record.record, "text", "")
+
+            author_handle = ""
+            if hasattr(post_record, "author") and post_record.author:
+                author_handle = getattr(post_record.author, "handle", "")
+
+            created_at = None
+            if hasattr(post_record, "record") and post_record.record:
+                created_str = getattr(post_record.record, "created_at", None)
+                if created_str:
+                    try:
+                        created_at = datetime.fromisoformat(
+                            created_str.replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        pass
+
+            if text:
+                posts.append(
+                    Post(
+                        uri=post_record.uri,
+                        text=text,
+                        author_handle=author_handle,
+                        created_at=created_at,
+                    )
+                )
+
+        return posts
+
     def get_feed_posts_all(self, feed_uri: str, max_posts: int = 100) -> list[Post]:
         """Get posts from a feed, handling pagination.
 
