@@ -11,12 +11,12 @@ from bsky_feed_analysis.models import LabeledPost, PostWithToxicity
 
 
 st.set_page_config(
-    page_title="Bluesky Feed 'Toxicity' Analyzer",
+    page_title="Bluesky Feed Analysis Tool: Toxicity in Context",
     page_icon="🦋",
     layout="wide",
 )
 
-st.title("Bluesky Feed 'Toxicity' Analyzer")
+st.title("Bluesky Feed Analysis Tool: Toxicity in Context")
 
 
 @st.cache_resource
@@ -40,6 +40,8 @@ def render_post_with_labeling(
     feed_name: str,
     labeled_uris: set[str],
     key_prefix: str,
+    analyzer: "FeedAnalyzer | None" = None,
+    all_posts: "list[PostWithToxicity] | None" = None,
 ):
     """Render a single post with its scores and inline labeling controls."""
     already_labeled = pwt.post.uri in labeled_uris
@@ -52,6 +54,112 @@ def render_post_with_labeling(
         f"hate: {pwt.toxicity.hatespeech_score:.2f})"
     )
     st.text(pwt.post.text[:500])
+
+    # Context popover for understanding high-scoring posts
+    if analyzer is not None:
+        with st.popover("Show Context", use_container_width=True):
+            # Thread context: parent posts in the conversation
+            st.markdown("**Thread Context**")
+            try:
+                parents = analyzer.bluesky.get_post_thread(pwt.post.uri)
+            except Exception:
+                parents = []
+
+            if parents:
+                for pi, parent in enumerate(parents):
+                    st.markdown(
+                        f"> **@{parent.author_handle}**: "
+                        f"{parent.text[:300]}"
+                    )
+                    if pi < len(parents) - 1:
+                        st.markdown("&nbsp;", unsafe_allow_html=True)
+                st.divider()
+                st.markdown(
+                    f":arrow_right: **@{pwt.post.author_handle}** (this post): "
+                    f"{pwt.post.text[:300]}"
+                )
+            else:
+                st.caption("No parent posts (this is a top-level post).")
+
+            # Surrounding feed posts
+            if all_posts:
+                st.divider()
+                st.markdown("**Surrounding Feed Posts**")
+                idx = next(
+                    (i for i, p in enumerate(all_posts) if p.post.uri == pwt.post.uri),
+                    None,
+                )
+                if idx is not None:
+                    start = max(0, idx - 2)
+                    end = min(len(all_posts), idx + 3)
+                    for i in range(start, end):
+                        neighbor = all_posts[i]
+                        is_current = i == idx
+                        if is_current:
+                            st.markdown(
+                                f":arrow_right: **@{neighbor.post.author_handle} "
+                                f"(THIS POST)** — "
+                                f"tox: {neighbor.toxicity.score:.2f}, "
+                                f"hate: {neighbor.toxicity.hatespeech_score:.2f}"
+                            )
+                            st.text(neighbor.post.text[:200])
+                        else:
+                            st.caption(
+                                f"@{neighbor.post.author_handle} — "
+                                f"tox: {neighbor.toxicity.score:.2f}, "
+                                f"hate: {neighbor.toxicity.hatespeech_score:.2f}"
+                            )
+                            st.caption(neighbor.post.text[:200])
+                        if i < end - 1:
+                            st.divider()
+
+            # Author's recent posts (non-threaded sequential context)
+            st.divider()
+            st.markdown("**Author's Recent Posts**")
+            try:
+                author_posts = analyzer.bluesky.get_author_feed(
+                    pwt.post.author_handle, limit=10
+                )
+            except Exception:
+                author_posts = []
+
+            if author_posts:
+                # Find this post in the author's timeline and show nearby posts
+                author_idx = next(
+                    (i for i, p in enumerate(author_posts) if p.uri == pwt.post.uri),
+                    None,
+                )
+                if author_idx is not None:
+                    start = max(0, author_idx - 3)
+                    end = min(len(author_posts), author_idx + 4)
+                    # Author feed is newest-first; reverse slice for chronological order
+                    window = list(range(start, end))
+                    for wi, i in enumerate(window):
+                        ap = author_posts[i]
+                        is_current = i == author_idx
+                        if is_current:
+                            st.markdown(
+                                f":arrow_right: **@{ap.author_handle} "
+                                f"(THIS POST)**"
+                            )
+                            st.text(ap.text[:200])
+                        else:
+                            st.caption(f"@{ap.author_handle}")
+                            st.caption(ap.text[:200])
+                        if wi < len(window) - 1:
+                            st.divider()
+                else:
+                    # Post not in recent 10; just show the latest posts for context
+                    st.caption(
+                        f"Recent posts by @{pwt.post.author_handle} "
+                        f"(scored post not in latest 10):"
+                    )
+                    for wi, ap in enumerate(reversed(author_posts[:5])):
+                        st.caption(f"@{ap.author_handle}: {ap.text[:200]}")
+                        if wi < min(len(author_posts), 5) - 1:
+                            st.divider()
+            else:
+                st.caption("Could not fetch author's recent posts.")
 
     with st.popover("Label this post", use_container_width=True):
         tox_options = ["No correction", "Toxic", "Not toxic"]
@@ -294,6 +402,7 @@ with tab_analyze:
             st.subheader("Feed Details")
 
             labeled_uris = st.session_state.get("labeled_uris", set())
+            current_analyzer = get_analyzer(username=bsky_user, app_password=bsky_pass)
 
             for ri, result in enumerate(sorted(results, key=lambda r: r.toxicity_rate, reverse=True)):
                 with st.expander(
@@ -322,8 +431,9 @@ with tab_analyze:
                                     feed_uri=result.feed.uri,
                                     feed_name=result.feed.name,
                                     labeled_uris=labeled_uris,
-
                                     key_prefix=f"toxic_{ri}_{i}",
+                                    analyzer=current_analyzer,
+                                    all_posts=result.all_posts,
                                 )
                                 if i < len(result.toxic_posts) - 1 and i < 9:
                                     st.divider()
@@ -346,8 +456,9 @@ with tab_analyze:
                                     feed_uri=result.feed.uri,
                                     feed_name=result.feed.name,
                                     labeled_uris=labeled_uris,
-
                                     key_prefix=f"hate_{ri}_{i}",
+                                    analyzer=current_analyzer,
+                                    all_posts=result.all_posts,
                                 )
                                 if i < len(result.high_hate_posts) - 1 and i < 9:
                                     st.divider()
@@ -365,8 +476,9 @@ with tab_analyze:
                                     feed_uri=result.feed.uri,
                                     feed_name=result.feed.name,
                                     labeled_uris=labeled_uris,
-
                                     key_prefix=f"all_{ri}_{i}",
+                                    analyzer=current_analyzer,
+                                    all_posts=result.all_posts,
                                 )
                                 if i < len(result.all_posts) - 1:
                                     st.divider()
