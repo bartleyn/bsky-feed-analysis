@@ -8,6 +8,7 @@ import sys
 from dataclasses import asdict
 
 from .analyzer import FeedAnalyzer
+from .toxicity_client import ToxicityClient
 from .config import DEFAULT_NUM_FEEDS, DEFAULT_MAX_POSTS
 
 
@@ -85,6 +86,24 @@ def serialize_results(results: list) -> list:
     return output
 
 
+def format_explanation(result) -> str:
+    """Format an explanation result as a text table."""
+    lines = []
+    lines.append(f"Signal: {result.signal_name}")
+    lines.append(f"Score:  {result.score:.4f}")
+    lines.append(f"Text:   {result.text[:80]}{'...' if len(result.text) > 80 else ''}")
+    lines.append("")
+    lines.append(f"{'Token':<20} {'Contribution':<12} {'Direction'}")
+    lines.append("-" * 45)
+
+    for c in result.contributions:
+        direction = "+" if c.value > 0 else "-" if c.value < 0 else " "
+        bar = direction * min(int(abs(c.value) * 50), 20)
+        lines.append(f"{c.token:<20} {c.value:>+.4f}      {bar}")
+
+    return "\n".join(lines)
+
+
 def _make_analyzer(args: argparse.Namespace) -> FeedAnalyzer:
     """Create an analyzer, optionally logging in."""
     analyzer = FeedAnalyzer()
@@ -130,6 +149,37 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(json.dumps(serialize_results(results), indent=2))
     else:
         print(format_analysis_table(results))
+
+    return 0
+
+
+def cmd_explain(args: argparse.Namespace) -> int:
+    """Handle explain command."""
+    client = ToxicityClient()
+
+    try:
+        result = client.explain_text(
+            text=args.text,
+            signal_name=args.signal,
+            top_n=args.top_n,
+        )
+    except Exception as e:
+        print(f"Error getting explanation: {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        data = {
+            "text": result.text,
+            "signal_name": result.signal_name,
+            "score": result.score,
+            "contributions": [
+                {"token": c.token, "value": c.value}
+                for c in result.contributions
+            ],
+        }
+        print(json.dumps(data, indent=2))
+    else:
+        print(format_explanation(result))
 
     return 0
 
@@ -183,6 +233,29 @@ def create_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="Output as JSON"
     )
 
+    # explain command
+    explain_parser = subparsers.add_parser(
+        "explain", help="Explain why a text received its toxicity score"
+    )
+    explain_parser.add_argument(
+        "text", type=str, help="The text to explain"
+    )
+    explain_parser.add_argument(
+        "--signal",
+        type=str,
+        default="toxicity",
+        help="Signal to explain: toxicity, sentiment, hatespeech (default: toxicity)",
+    )
+    explain_parser.add_argument(
+        "--top-n",
+        type=int,
+        default=10,
+        help="Max number of token contributions to return (default: 10)",
+    )
+    explain_parser.add_argument(
+        "--json", action="store_true", help="Output as JSON"
+    )
+
     return parser
 
 
@@ -195,6 +268,8 @@ def main() -> int:
         return cmd_list_feeds(args)
     elif args.command == "analyze":
         return cmd_analyze(args)
+    elif args.command == "explain":
+        return cmd_explain(args)
 
     return 1
 
