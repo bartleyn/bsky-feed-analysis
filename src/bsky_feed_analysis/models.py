@@ -97,3 +97,21 @@ class LabeledPost:
     corrected_hatespeech_label: int | None = None
     tags: str = ""
     labeled_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+@dataclass
+class TokenContribution:
+    """A single token's contribution to a prediction score."""
+
+    token: str
+    value: float
+
+
+@dataclass
+class ExplanationResult:
+    """SHAP-based explanation of a toxicity prediction."""
+
+    text: str
+    signal_name: str
+    score: float
+    contributions: list[TokenContribution] = field(default_factory=list)

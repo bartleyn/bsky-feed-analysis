@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 
 from .config import TOXICITY_API_URL, DEFAULT_TOXICITY_THRESHOLD
-from .models import ToxicityResult, LabeledPost
+from .models import ToxicityResult, LabeledPost, TokenContribution, ExplanationResult
 
 
 class ToxicityClient:
@@ -90,6 +90,44 @@ class ToxicityClient:
             )
             response.raise_for_status()
             return response.json()
+
+    def explain_text(
+        self,
+        text: str,
+        signal_name: str = "toxicity",
+        top_n: int = 10,
+    ) -> ExplanationResult:
+        """Get SHAP-based explanation for a single text.
+
+        Args:
+            text: The text to explain.
+            signal_name: Which signal to explain (toxicity, sentiment, hatespeech).
+            top_n: Maximum number of token contributions to return.
+
+        Returns:
+            ExplanationResult with token-level contributions.
+
+        Raises:
+            httpx.HTTPError: If the API request fails.
+        """
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(
+                f"{self.base_url}/explain",
+                json={"text": text, "signal_name": signal_name, "top_n": top_n},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        contributions = [
+            TokenContribution(token=c["token"], value=c["weight"])
+            for c in data["contributions"]
+        ]
+        return ExplanationResult(
+            text=data["text"],
+            signal_name=data["signal_name"],
+            score=data["score"],
+            contributions=contributions,
+        )
 
     def health_check(self) -> bool:
         """Check if the toxicity API is available."""
