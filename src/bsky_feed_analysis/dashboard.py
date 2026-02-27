@@ -161,6 +161,55 @@ def render_post_with_labeling(
             else:
                 st.caption("Could not fetch author's recent posts.")
 
+    with st.popover("Explain Scores", use_container_width=True):
+        explain_signal = st.selectbox(
+            "Signal to explain",
+            ["toxicity", "sentiment", "hatespeech"],
+            key=f"{key_prefix}_explain_signal",
+        )
+        explain_top_n = st.slider(
+            "Top N tokens",
+            min_value=3,
+            max_value=20,
+            value=10,
+            key=f"{key_prefix}_explain_topn",
+        )
+
+        explain_key = f"explain_{key_prefix}_{explain_signal}"
+        if st.button("Explain", key=f"{key_prefix}_explain_btn"):
+            try:
+                toxicity_client = ToxicityClient()
+                explanation = toxicity_client.explain_text(
+                    text=pwt.post.text,
+                    signal_name=explain_signal,
+                    top_n=explain_top_n,
+                )
+                st.session_state[explain_key] = explanation
+            except Exception as e:
+                st.error(f"Explanation failed: {e}")
+
+        if explain_key in st.session_state:
+            explanation = st.session_state[explain_key]
+            st.markdown(f"**Score:** {explanation.score:.4f}")
+            st.markdown("**Token contributions:**")
+            for c in explanation.contributions:
+                if c.value > 0:
+                    color = "red"
+                    sign = "+"
+                elif c.value < 0:
+                    color = "green"
+                    sign = ""
+                else:
+                    color = "gray"
+                    sign = ""
+                bar_len = min(int(abs(c.value) * 100), 20)
+                bar = "\u2588" * bar_len
+                st.markdown(
+                    f"`{c.token}` "
+                    f"<span style='color:{color}'>{sign}{c.value:.4f} {bar}</span>",
+                    unsafe_allow_html=True,
+                )
+
     with st.popover("Label this post", use_container_width=True):
         tox_options = ["No correction", "Toxic", "Not toxic"]
         tox_choice = st.selectbox(
