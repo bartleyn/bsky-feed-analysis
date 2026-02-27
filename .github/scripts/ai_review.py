@@ -26,7 +26,7 @@ def run_claude(prompt: str) -> str:
 def post_review(body: str, comments: list):
     """Post a review to the Github PR"""
     repo = os.environ["GITHUB_REPOSITORY"]
-    pr_number = os.environ['GITHUB_REF'].split('/')[2]
+    pr_number = os.environ['GITHUB_EVENT_NUMBER']
     token = os.environ['GH_TOKEN']
 
     headers = {
